@@ -91,10 +91,13 @@ public class ChatController {
         if (!chatService.isGroupMember(msg.getRecipient(), msg.getSender())) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not a member of this group");
         }
-        msg.setTimestamp(getCurrentTime());
-        msg.setGroupMessage(true);
-        chatService.saveMessage(msg);
-        return ResponseEntity.ok("Group message sent");
+        if(userService.isLoggedIn(msg.getSender())){
+            msg.setTimestamp(getCurrentTime());
+            msg.setGroupMessage(true);
+            chatService.saveMessage(msg);
+            return ResponseEntity.ok("Group message sent");
+        }
+        else return ResponseEntity.badRequest().body("Sender is not logged in");
     }
 
     @GetMapping("/group/history")
