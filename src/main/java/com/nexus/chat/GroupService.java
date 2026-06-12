@@ -11,6 +11,7 @@ import com.nexus.common.ForbiddenAccessException;
 import com.nexus.common.ResourceNotFoundException;
 import com.nexus.user.User;
 import com.nexus.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,15 +24,18 @@ public class GroupService {
     private final ConversationRepository conversations;
     private final ConversationMemberRepository members;
     private final MessageRepository messages;
+    private final ApplicationEventPublisher events;
 
     public GroupService(UserRepository users,
                         ConversationRepository conversations,
                         ConversationMemberRepository members,
-                        MessageRepository messages) {
+                        MessageRepository messages,
+                        ApplicationEventPublisher events) {
         this.users = users;
         this.conversations = conversations;
         this.members = members;
         this.messages = messages;
+        this.events = events;
     }
 
     @Transactional
@@ -108,12 +112,18 @@ public class GroupService {
         }
         Conversation conversation = conversations.getReferenceById(conversationId);
         Message message = messages.save(new Message(conversation, sender, request.content()));
-        return new MessageResponse(
+        MessageResponse response = new MessageResponse(
                 message.getId(),
                 conversationId,
                 sender.getUsername(),
                 message.getContent(),
                 message.getCreatedAt());
+
+        List<String> recipients = members.findMembersByConversationId(conversationId).stream()
+                .map(GroupMemberResponse::username)
+                .toList();
+        events.publishEvent(new MessagePostedEvent(response, recipients));
+        return response;
     }
 
     private void requireAdmin(String actorUsername, Long conversationId) {

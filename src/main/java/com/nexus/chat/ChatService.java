@@ -1,5 +1,6 @@
 package com.nexus.chat;
 
+import com.nexus.chat.dto.GroupMemberResponse;
 import com.nexus.chat.dto.MessageResponse;
 import com.nexus.chat.dto.SendDirectMessageRequest;
 import com.nexus.common.ForbiddenAccessException;
@@ -7,10 +8,13 @@ import com.nexus.common.PageResponse;
 import com.nexus.common.ResourceNotFoundException;
 import com.nexus.user.User;
 import com.nexus.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 public class ChatService {
@@ -19,15 +23,18 @@ public class ChatService {
     private final ConversationRepository conversations;
     private final ConversationMemberRepository members;
     private final MessageRepository messages;
+    private final ApplicationEventPublisher events;
 
     public ChatService(UserRepository users,
                        ConversationRepository conversations,
                        ConversationMemberRepository members,
-                       MessageRepository messages) {
+                       MessageRepository messages,
+                       ApplicationEventPublisher events) {
         this.users = users;
         this.conversations = conversations;
         this.members = members;
         this.messages = messages;
+        this.events = events;
     }
 
     @Transactional
@@ -45,12 +52,15 @@ public class ChatService {
         Conversation conversation = getOrCreateDirectConversation(sender, recipient);
         Message message = messages.save(new Message(conversation, sender, request.content()));
 
-        return new MessageResponse(
+        MessageResponse response = new MessageResponse(
                 message.getId(),
                 conversation.getId(),
                 sender.getUsername(),
                 message.getContent(),
                 message.getCreatedAt());
+
+        events.publishEvent(new MessagePostedEvent(response, recipientUsernames(conversation.getId())));
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -68,6 +78,12 @@ public class ChatService {
         Page<MessageResponse> result =
                 messages.findResponsesByConversationId(conversationId, PageRequest.of(page, size));
         return PageResponse.from(result);
+    }
+
+    private List<String> recipientUsernames(Long conversationId) {
+        return members.findMembersByConversationId(conversationId).stream()
+                .map(GroupMemberResponse::username)
+                .toList();
     }
 
     private Conversation getOrCreateDirectConversation(User a, User b) {
