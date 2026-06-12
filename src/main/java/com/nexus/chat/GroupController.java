@@ -1,6 +1,7 @@
 package com.nexus.chat;
 
 import com.nexus.chat.dto.AddMemberRequest;
+import com.nexus.chat.dto.ChangeRoleRequest;
 import com.nexus.chat.dto.CreateGroupRequest;
 import com.nexus.chat.dto.GroupResponse;
 import com.nexus.chat.dto.MessageResponse;
@@ -13,6 +14,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,6 +52,24 @@ public class GroupController {
             @PathVariable Long conversationId,
             @PathVariable String username) {
         groupService.removeMember(principal.getUsername(), conversationId, username);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{conversationId}/members/{username}/role")
+    public ResponseEntity<Void> changeRole(
+            @AuthenticationPrincipal UserDetails principal,
+            @PathVariable Long conversationId,
+            @PathVariable String username,
+            @Valid @RequestBody ChangeRoleRequest request) {
+        groupService.changeRole(principal.getUsername(), conversationId, username, request.role());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{conversationId}/leave")
+    public ResponseEntity<Void> leave(
+            @AuthenticationPrincipal UserDetails principal,
+            @PathVariable Long conversationId) {
+        groupService.leaveGroup(principal.getUsername(), conversationId);
         return ResponseEntity.noContent().build();
     }
 

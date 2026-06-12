@@ -59,4 +59,30 @@ class GroupServiceTest {
                 groups.addMember("g_alice", conversationId, new AddMemberRequest("g_bob")))
                 .isInstanceOf(ConflictException.class);
     }
+
+    @Test
+    void adminLifecycleAndLastAdminInvariant() {
+        users.save(new User("a_owner", "h"));
+        users.save(new User("a_bob", "h"));
+        users.save(new User("a_carol", "h"));
+
+        GroupResponse group = groups.createGroup("a_owner",
+                new CreateGroupRequest("Crew", List.of("a_bob")));
+        Long cid = group.conversationId();
+
+        assertThatThrownBy(() -> groups.leaveGroup("a_owner", cid))
+                .isInstanceOf(ConflictException.class);
+
+        assertThatThrownBy(() -> groups.changeRole("a_owner", cid, "a_owner", MemberRole.MEMBER))
+                .isInstanceOf(ConflictException.class);
+
+        assertThatThrownBy(() -> groups.removeMember("a_owner", cid, "a_owner"))
+                .isInstanceOf(ConflictException.class);
+
+        groups.changeRole("a_owner", cid, "a_bob", MemberRole.ADMIN);
+
+        groups.leaveGroup("a_owner", cid);
+
+        groups.addMember("a_bob", cid, new AddMemberRequest("a_carol"));
+    }
 }

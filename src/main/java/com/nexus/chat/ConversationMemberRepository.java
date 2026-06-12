@@ -16,6 +16,10 @@ public interface ConversationMemberRepository extends JpaRepository<Conversation
 
     Optional<ConversationMember> findByConversationIdAndUserId(Long conversationId, Long userId);
 
+    long countByConversationId(Long conversationId);
+
+    long countByConversationIdAndRole(Long conversationId, MemberRole role);
+
     @Query("""
             select new com.nexus.chat.dto.GroupMemberResponse(m.user.username, m.role)
             from ConversationMember m

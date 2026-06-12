@@ -68,10 +68,35 @@ public class GroupService {
     @Transactional
     public void removeMember(String actorUsername, Long conversationId, String targetUsername) {
         requireAdmin(actorUsername, conversationId);
-        User target = loadUser(targetUsername);
-        ConversationMember membership = members.findByConversationIdAndUserId(conversationId, target.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("User is not a member of this group"));
+        ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
+        if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
+            throw new ConflictException("Cannot remove the last admin while other members remain");
+        }
         members.delete(membership);
+    }
+
+    @Transactional
+    public void leaveGroup(String username, Long conversationId) {
+        ConversationMember membership = loadMembership(conversationId, loadUser(username));
+        if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
+            throw new ConflictException("Promote another member to admin before leaving the group");
+        }
+        members.delete(membership);
+    }
+
+    @Transactional
+    public void changeRole(String actorUsername, Long conversationId, String targetUsername, MemberRole newRole) {
+        requireAdmin(actorUsername, conversationId);
+        ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
+        if (membership.getRole() == newRole) {
+            return;
+        }
+        if (newRole == MemberRole.MEMBER
+                && members.countByConversationIdAndRole(conversationId, MemberRole.ADMIN) == 1) {
+            throw new ConflictException("Cannot demote the last admin of the group");
+        }
+        membership.setRole(newRole);
+        members.save(membership);
     }
 
     @Transactional
@@ -96,6 +121,16 @@ public class GroupService {
         if (!members.existsByConversationIdAndUserIdAndRole(conversationId, actor.getId(), MemberRole.ADMIN)) {
             throw new ForbiddenAccessException("Only a group admin can perform this action");
         }
+    }
+
+    private boolean isLastAdminWithOthersRemaining(Long conversationId) {
+        return members.countByConversationIdAndRole(conversationId, MemberRole.ADMIN) == 1
+                && members.countByConversationId(conversationId) > 1;
+    }
+
+    private ConversationMember loadMembership(Long conversationId, User user) {
+        return members.findByConversationIdAndUserId(conversationId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User is not a member of this group"));
     }
 
     private User loadUser(String username) {
