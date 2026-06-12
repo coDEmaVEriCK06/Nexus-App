@@ -2,5 +2,18 @@ spring:
   application:
     name: nexus
 
+  datasource:
+    url: jdbc:postgresql://localhost:5432/nexus
+    username: nexus
+    password: nexus
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
 server:
   port: 8084
