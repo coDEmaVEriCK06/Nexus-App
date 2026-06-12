@@ -1,6 +1,8 @@
 package com.nexus.auth;
 
+import com.nexus.auth.dto.LoginRequest;
 import com.nexus.auth.dto.RegisterRequest;
+import com.nexus.auth.dto.TokenResponse;
 import com.nexus.auth.dto.UserResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -24,5 +26,10 @@ public class AuthController {
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse created = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PostMapping("/login")
+    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 }
