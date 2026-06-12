@@ -4,9 +4,11 @@ import com.nexus.chat.dto.AddMemberRequest;
 import com.nexus.chat.dto.CreateGroupRequest;
 import com.nexus.chat.dto.GroupResponse;
 import com.nexus.chat.dto.MessageResponse;
+import com.nexus.chat.dto.SendDirectMessageRequest;
 import com.nexus.chat.dto.SendGroupMessageRequest;
 import com.nexus.common.ConflictException;
 import com.nexus.common.ForbiddenAccessException;
+import com.nexus.common.ResourceNotFoundException;
 import com.nexus.user.User;
 import com.nexus.user.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class GroupServiceTest {
 
     @Autowired private GroupService groups;
+    @Autowired private ChatService chat;
     @Autowired private UserRepository users;
 
     @Test
@@ -84,5 +87,23 @@ class GroupServiceTest {
         groups.leaveGroup("a_owner", cid);
 
         groups.addMember("a_bob", cid, new AddMemberRequest("a_carol"));
+    }
+
+    @Test
+    void groupOperationsRejectDirectConversations() {
+        users.save(new User("d_alice", "h"));
+        users.save(new User("d_bob", "h"));
+
+        MessageResponse dm = chat.sendDirectMessage("d_alice",
+                new SendDirectMessageRequest("d_bob", "hi"));
+        Long directId = dm.conversationId();
+
+        assertThatThrownBy(() -> groups.leaveGroup("d_alice", directId))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> groups.addMember("d_alice", directId, new AddMemberRequest("d_bob")))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> groups.postGroupMessage("d_alice", directId,
+                new SendGroupMessageRequest("x")))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

@@ -60,6 +60,7 @@ public class GroupService {
 
     @Transactional
     public void addMember(String actorUsername, Long conversationId, AddMemberRequest request) {
+        requireGroup(conversationId);
         requireAdmin(actorUsername, conversationId);
         User toAdd = loadUser(request.username());
         if (members.existsByConversationIdAndUserId(conversationId, toAdd.getId())) {
@@ -71,6 +72,7 @@ public class GroupService {
 
     @Transactional
     public void removeMember(String actorUsername, Long conversationId, String targetUsername) {
+        requireGroup(conversationId);
         requireAdmin(actorUsername, conversationId);
         ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
         if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
@@ -81,6 +83,7 @@ public class GroupService {
 
     @Transactional
     public void leaveGroup(String username, Long conversationId) {
+        requireGroup(conversationId);
         ConversationMember membership = loadMembership(conversationId, loadUser(username));
         if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
             throw new ConflictException("Promote another member to admin before leaving the group");
@@ -90,6 +93,7 @@ public class GroupService {
 
     @Transactional
     public void changeRole(String actorUsername, Long conversationId, String targetUsername, MemberRole newRole) {
+        requireGroup(conversationId);
         requireAdmin(actorUsername, conversationId);
         ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
         if (membership.getRole() == newRole) {
@@ -106,6 +110,7 @@ public class GroupService {
     @Transactional
     public MessageResponse postGroupMessage(String senderUsername, Long conversationId,
                                             SendGroupMessageRequest request) {
+        requireGroup(conversationId);
         User sender = loadUser(senderUsername);
         if (!members.existsByConversationIdAndUserId(conversationId, sender.getId())) {
             throw new ForbiddenAccessException("You are not a member of this conversation");
@@ -124,6 +129,12 @@ public class GroupService {
                 .toList();
         events.publishEvent(new MessagePostedEvent(response, recipients));
         return response;
+    }
+
+    private void requireGroup(Long conversationId) {
+        if (!conversations.existsByIdAndType(conversationId, ConversationType.GROUP)) {
+            throw new ResourceNotFoundException("Group not found");
+        }
     }
 
     private void requireAdmin(String actorUsername, Long conversationId) {
