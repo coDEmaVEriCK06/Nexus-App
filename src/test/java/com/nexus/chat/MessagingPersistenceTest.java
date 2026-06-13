@@ -1,17 +1,17 @@
 package com.nexus.chat;
 
+import com.nexus.AbstractIntegrationTest;
+
 import com.nexus.user.User;
 import com.nexus.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
 @Transactional
-class MessagingPersistenceTest {
+class MessagingPersistenceTest extends AbstractIntegrationTest {
 
     @Autowired private UserRepository users;
     @Autowired private ConversationRepository conversations;

@@ -1,5 +1,7 @@
 package com.nexus.chat;
 
+import com.nexus.AbstractIntegrationTest;
+
 import com.nexus.chat.dto.MessageResponse;
 import com.nexus.chat.dto.SendDirectMessageRequest;
 import com.nexus.common.ForbiddenAccessException;
@@ -9,15 +11,13 @@ import com.nexus.user.User;
 import com.nexus.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest
 @Transactional
-class ChatServiceTest {
+class ChatServiceTest extends AbstractIntegrationTest {
 
     @Autowired private ChatService chat;
     @Autowired private UserRepository users;

@@ -1,5 +1,7 @@
 package com.nexus.chat;
 
+import com.nexus.AbstractIntegrationTest;
+
 import com.nexus.chat.dto.AddMemberRequest;
 import com.nexus.chat.dto.CreateGroupRequest;
 import com.nexus.chat.dto.GroupResponse;
@@ -13,7 +15,6 @@ import com.nexus.user.User;
 import com.nexus.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -21,9 +22,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest
 @Transactional
-class GroupServiceTest {
+class GroupServiceTest extends AbstractIntegrationTest {
 
     @Autowired private GroupService groups;
     @Autowired private ChatService chat;
