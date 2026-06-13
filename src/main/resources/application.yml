@@ -18,6 +18,26 @@ spring:
 server:
   port: 8084
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Nexus
+    description: A real-time chat backend (Spring Boot)
+    version: 1.0.0
+
 nexus:
   jwt:
     secret: ${NEXUS_JWT_SECRET:nexus-dev-secret-change-me-please-use-a-32-byte-or-longer-secret-0123456789}
