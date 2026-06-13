@@ -1,5 +1,6 @@
 package com.nexus.chat;
 
+import com.nexus.chat.dto.ConversationSummaryResponse;
 import com.nexus.chat.dto.GroupMemberResponse;
 import com.nexus.chat.dto.MessageResponse;
 import com.nexus.chat.dto.SendDirectMessageRequest;
@@ -14,6 +15,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -78,6 +81,53 @@ public class ChatService {
         Page<MessageResponse> result =
                 messages.findResponsesByConversationId(conversationId, PageRequest.of(page, size));
         return PageResponse.from(result);
+    }
+
+    /**
+     * Lists every conversation the user belongs to (direct and group), most-recently-active
+     * first. Per-conversation last-message and DM-peer lookups are issued individually here;
+     * for a user with many conversations this is an N+1 pattern, and the documented production
+     * evolution is a denormalized {@code last_message_at} on the conversation plus a batched
+     * peer fetch. For the demo's scale this reads clearly and correctly.
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationSummaryResponse> listConversations(String username) {
+        User me = users.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        List<ConversationMember> memberships =
+                members.findMembershipsWithConversationByUserId(me.getId());
+
+        List<ConversationSummaryResponse> summaries = new ArrayList<>();
+        for (ConversationMember membership : memberships) {
+            Conversation conversation = membership.getConversation();
+
+            String displayName;
+            if (conversation.getType() == ConversationType.GROUP) {
+                displayName = conversation.getName();
+            } else {
+                displayName = members.findOtherMemberUsernames(conversation.getId(), me.getId())
+                        .stream().findFirst().orElse("(unknown)");
+            }
+
+            Message last = messages
+                    .findTopByConversationIdOrderByCreatedAtDesc(conversation.getId())
+                    .orElse(null);
+
+            summaries.add(new ConversationSummaryResponse(
+                    conversation.getId(),
+                    conversation.getType(),
+                    displayName,
+                    membership.getRole(),
+                    last == null ? null : last.getContent(),
+                    last == null ? null : last.getSender().getUsername(),
+                    last == null ? null : last.getCreatedAt()));
+        }
+
+        summaries.sort(Comparator.comparing(
+                ConversationSummaryResponse::lastMessageAt,
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return summaries;
     }
 
     private List<String> recipientUsernames(Long conversationId) {

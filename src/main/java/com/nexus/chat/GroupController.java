@@ -3,6 +3,7 @@ package com.nexus.chat;
 import com.nexus.chat.dto.AddMemberRequest;
 import com.nexus.chat.dto.ChangeRoleRequest;
 import com.nexus.chat.dto.CreateGroupRequest;
+import com.nexus.chat.dto.GroupMemberResponse;
 import com.nexus.chat.dto.GroupResponse;
 import com.nexus.chat.dto.MessageResponse;
 import com.nexus.chat.dto.SendGroupMessageRequest;
@@ -12,12 +13,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/groups")
@@ -35,6 +39,13 @@ public class GroupController {
             @Valid @RequestBody CreateGroupRequest request) {
         GroupResponse created = groupService.createGroup(principal.getUsername(), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @GetMapping("/{conversationId}/members")
+    public List<GroupMemberResponse> listMembers(
+            @AuthenticationPrincipal UserDetails principal,
+            @PathVariable Long conversationId) {
+        return groupService.listMembers(principal.getUsername(), conversationId);
     }
 
     @PostMapping("/{conversationId}/members")

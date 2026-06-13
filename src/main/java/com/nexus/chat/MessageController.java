@@ -1,5 +1,6 @@
 package com.nexus.chat;
 
+import com.nexus.chat.dto.ConversationSummaryResponse;
 import com.nexus.chat.dto.MessageResponse;
 import com.nexus.chat.dto.SendDirectMessageRequest;
 import com.nexus.common.PageResponse;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api")
 public class MessageController {
@@ -24,6 +27,12 @@ public class MessageController {
 
     public MessageController(ChatService chatService) {
         this.chatService = chatService;
+    }
+
+    @GetMapping("/conversations")
+    public List<ConversationSummaryResponse> listConversations(
+            @AuthenticationPrincipal UserDetails principal) {
+        return chatService.listConversations(principal.getUsername());
     }
 
     @PostMapping("/messages/direct")

@@ -8,10 +8,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
     List<Message> findByConversationIdOrderByCreatedAtAsc(Long conversationId);
+
+    Optional<Message> findTopByConversationIdOrderByCreatedAtDesc(Long conversationId);
 
     @Query(value = """
             select new com.nexus.chat.dto.MessageResponse(

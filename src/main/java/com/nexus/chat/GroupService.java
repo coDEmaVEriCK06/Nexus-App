@@ -131,6 +131,16 @@ public class GroupService {
         return response;
     }
 
+    @Transactional(readOnly = true)
+    public List<GroupMemberResponse> listMembers(String requesterUsername, Long conversationId) {
+        requireGroup(conversationId);
+        User requester = loadUser(requesterUsername);
+        if (!members.existsByConversationIdAndUserId(conversationId, requester.getId())) {
+            throw new ForbiddenAccessException("You are not a member of this group");
+        }
+        return members.findMembersByConversationId(conversationId);
+    }
+
     private void requireGroup(Long conversationId) {
         if (!conversations.existsByIdAndType(conversationId, ConversationType.GROUP)) {
             throw new ResourceNotFoundException("Group not found");

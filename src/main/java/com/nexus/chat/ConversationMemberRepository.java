@@ -27,4 +27,19 @@ public interface ConversationMemberRepository extends JpaRepository<Conversation
             order by m.joinedAt asc
             """)
     List<GroupMemberResponse> findMembersByConversationId(@Param("conversationId") Long conversationId);
+
+    @Query("""
+            select m from ConversationMember m
+            join fetch m.conversation
+            where m.user.id = :userId
+            """)
+    List<ConversationMember> findMembershipsWithConversationByUserId(@Param("userId") Long userId);
+
+    @Query("""
+            select m.user.username
+            from ConversationMember m
+            where m.conversation.id = :conversationId and m.user.id <> :excludeUserId
+            """)
+    List<String> findOtherMemberUsernames(@Param("conversationId") Long conversationId,
+                                          @Param("excludeUserId") Long excludeUserId);
 }
