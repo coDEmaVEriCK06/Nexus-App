@@ -3,6 +3,8 @@ package com.nexus.chat;
 import com.nexus.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -39,6 +41,10 @@ public class Message {
     @Column(nullable = false, length = 8000)
     private String content;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private MessageType type = MessageType.USER;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -47,5 +53,15 @@ public class Message {
         this.conversation = conversation;
         this.sender = sender;
         this.content = content;
+    }
+
+    /**
+     * A system notice. The {@code actor} is recorded as the sender (the person whose
+     * action produced the notice), and {@code content} is the human-readable sentence.
+     */
+    public static Message system(Conversation conversation, User actor, String content) {
+        Message message = new Message(conversation, actor, content);
+        message.type = MessageType.SYSTEM;
+        return message;
     }
 }

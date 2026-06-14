@@ -60,7 +60,8 @@ public class ChatService {
                 conversation.getId(),
                 sender.getUsername(),
                 message.getContent(),
-                message.getCreatedAt());
+                message.getCreatedAt(),
+                message.getType());
 
         events.publishEvent(new MessagePostedEvent(response, recipientUsernames(conversation.getId())));
         return response;

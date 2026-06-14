@@ -55,46 +55,58 @@ public class GroupService {
                 }
             }
         }
+        systemNotice(group, creator, creator.getUsername() + " created the group",
+                memberUsernames(group.getId()));
         return toGroupResponse(group);
     }
 
     @Transactional
     public void addMember(String actorUsername, Long conversationId, AddMemberRequest request) {
         requireGroup(conversationId);
-        requireAdmin(actorUsername, conversationId);
+        User actor = requireAdmin(actorUsername, conversationId);
         User toAdd = loadUser(request.username());
         if (members.existsByConversationIdAndUserId(conversationId, toAdd.getId())) {
             throw new ConflictException("User is already a member of this group");
         }
         Conversation group = conversations.getReferenceById(conversationId);
         members.save(new ConversationMember(group, toAdd, MemberRole.MEMBER));
+        systemNotice(group, actor, actor.getUsername() + " added " + toAdd.getUsername(),
+                memberUsernames(conversationId));
     }
 
     @Transactional
     public void removeMember(String actorUsername, Long conversationId, String targetUsername) {
         requireGroup(conversationId);
-        requireAdmin(actorUsername, conversationId);
+        User actor = requireAdmin(actorUsername, conversationId);
         ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
         if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
             throw new ConflictException("Cannot remove the last admin while other members remain");
         }
+        // capture recipients before removal so the removed user still gets the live notice
+        List<String> recipients = memberUsernames(conversationId);
         members.delete(membership);
+        Conversation group = conversations.getReferenceById(conversationId);
+        systemNotice(group, actor, actor.getUsername() + " removed " + targetUsername, recipients);
     }
 
     @Transactional
     public void leaveGroup(String username, Long conversationId) {
         requireGroup(conversationId);
-        ConversationMember membership = loadMembership(conversationId, loadUser(username));
+        User leaver = loadUser(username);
+        ConversationMember membership = loadMembership(conversationId, leaver);
         if (membership.getRole() == MemberRole.ADMIN && isLastAdminWithOthersRemaining(conversationId)) {
             throw new ConflictException("Promote another member to admin before leaving the group");
         }
+        List<String> recipients = memberUsernames(conversationId);
         members.delete(membership);
+        Conversation group = conversations.getReferenceById(conversationId);
+        systemNotice(group, leaver, leaver.getUsername() + " left", recipients);
     }
 
     @Transactional
     public void changeRole(String actorUsername, Long conversationId, String targetUsername, MemberRole newRole) {
         requireGroup(conversationId);
-        requireAdmin(actorUsername, conversationId);
+        User actor = requireAdmin(actorUsername, conversationId);
         ConversationMember membership = loadMembership(conversationId, loadUser(targetUsername));
         if (membership.getRole() == newRole) {
             return;
@@ -105,6 +117,11 @@ public class GroupService {
         }
         membership.setRole(newRole);
         members.save(membership);
+        Conversation group = conversations.getReferenceById(conversationId);
+        String text = newRole == MemberRole.ADMIN
+                ? actor.getUsername() + " promoted " + targetUsername + " to admin"
+                : actor.getUsername() + " demoted " + targetUsername + " to member";
+        systemNotice(group, actor, text, memberUsernames(conversationId));
     }
 
     @Transactional
@@ -122,12 +139,10 @@ public class GroupService {
                 conversationId,
                 sender.getUsername(),
                 message.getContent(),
-                message.getCreatedAt());
+                message.getCreatedAt(),
+                message.getType());
 
-        List<String> recipients = members.findMembersByConversationId(conversationId).stream()
-                .map(GroupMemberResponse::username)
-                .toList();
-        events.publishEvent(new MessagePostedEvent(response, recipients));
+        events.publishEvent(new MessagePostedEvent(response, memberUsernames(conversationId)));
         return response;
     }
 
@@ -141,17 +156,41 @@ public class GroupService {
         return members.findMembersByConversationId(conversationId);
     }
 
+    /**
+     * Persists a SYSTEM message and fans it out over the same after-commit pipeline as
+     * normal messages, so every recipient sees the notice live and clients can refresh
+     * their role/roster in response.
+     */
+    private void systemNotice(Conversation group, User actor, String text, List<String> recipients) {
+        Message saved = messages.save(Message.system(group, actor, text));
+        MessageResponse response = new MessageResponse(
+                saved.getId(),
+                group.getId(),
+                actor.getUsername(),
+                saved.getContent(),
+                saved.getCreatedAt(),
+                saved.getType());
+        events.publishEvent(new MessagePostedEvent(response, recipients));
+    }
+
+    private List<String> memberUsernames(Long conversationId) {
+        return members.findMembersByConversationId(conversationId).stream()
+                .map(GroupMemberResponse::username)
+                .toList();
+    }
+
     private void requireGroup(Long conversationId) {
         if (!conversations.existsByIdAndType(conversationId, ConversationType.GROUP)) {
             throw new ResourceNotFoundException("Group not found");
         }
     }
 
-    private void requireAdmin(String actorUsername, Long conversationId) {
+    private User requireAdmin(String actorUsername, Long conversationId) {
         User actor = loadUser(actorUsername);
         if (!members.existsByConversationIdAndUserIdAndRole(conversationId, actor.getId(), MemberRole.ADMIN)) {
             throw new ForbiddenAccessException("Only a group admin can perform this action");
         }
+        return actor;
     }
 
     private boolean isLastAdminWithOthersRemaining(Long conversationId) {

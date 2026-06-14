@@ -18,7 +18,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     @Query(value = """
             select new com.nexus.chat.dto.MessageResponse(
-                m.id, m.conversation.id, m.sender.username, m.content, m.createdAt)
+                m.id, m.conversation.id, m.sender.username, m.content, m.createdAt, m.type)
             from Message m
             where m.conversation.id = :conversationId
             order by m.createdAt desc

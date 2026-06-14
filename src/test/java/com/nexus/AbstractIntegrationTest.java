@@ -6,11 +6,13 @@ import org.springframework.test.context.TestPropertySource;
 @SpringBootTest
 @TestPropertySource(properties = "nexus.ratelimit.enabled=false")
 public abstract class AbstractIntegrationTest {
-    // Local + CI tests run against the Postgres from docker-compose (localhost:5432),
-    // the same DB used since Phase 1. Testcontainers stays wired in pom.xml and is
-    // activated in CI (Phase 6), where the Docker environment is clean.
+    // Integration tests run against the dev Postgres from docker-compose (localhost:5432),
+    // configured via application.yml. Start it with `docker compose up -d` before testing.
     //
-    // Rate limiting is disabled here so the auth-heavy integration tests (which issue
-    // many register/login calls from the same loopback address) aren't throttled.
-    // The 429 behavior is covered in isolation by RateLimitingTest.
+    // Rate limiting is disabled here so the auth-heavy integration tests (many register/login
+    // calls from the same loopback address) aren't throttled; the 429 path is covered in
+    // isolation by RateLimitingTest.
+    //
+    // Note: these tests share the dev database, so test fixtures must not collide with data
+    // created by manual API calls. A fresh `docker compose down -v && up -d` gives a clean slate.
 }
