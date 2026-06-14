@@ -122,7 +122,8 @@ public class ChatService {
                     membership.getRole(),
                     last == null ? null : last.getContent(),
                     last == null ? null : last.getSender().getUsername(),
-                    last == null ? null : last.getCreatedAt()));
+                    last == null ? null : last.getCreatedAt(),
+                    last == null ? null : last.getType()));
         }
 
         summaries.sort(Comparator.comparing(

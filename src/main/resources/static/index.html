@@ -255,6 +255,9 @@
   .msg.me { align-self: flex-end; align-items: flex-end; }
   .msg.me .bubble { background: var(--bubble-me); border-color: color-mix(in srgb, var(--signal) 26%, transparent); border-radius: 13px 13px 4px 13px; }
   .msg.live .bubble { animation: arrive .45s ease; box-shadow: -3px 0 0 0 var(--signal); }
+  .system-line { align-self: center; max-width: 82%; text-align: center; margin: 4px 0; }
+  .system-line span { display: inline-block; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+  .system-line.live span { animation: arrive .45s ease; border-color: color-mix(in srgb, var(--signal) 35%, transparent); }
   @keyframes arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
   .composer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface); }
@@ -305,7 +308,7 @@
   .toast.ok { border-color: color-mix(in srgb, var(--signal) 50%, transparent); }
 
   @media (prefers-reduced-motion: reduce) {
-    .signal-field::before, .conn.live .dot, .msg.live .bubble { animation: none; }
+    .signal-field::before, .conn.live .dot, .msg.live .bubble, .system-line.live span { animation: none; }
   }
   @media (max-width: 720px) {
     .workspace { grid-template-columns: 1fr; }
@@ -552,7 +555,11 @@ $("authForm").addEventListener("submit", async (e) => {
     sessionStorage.setItem("nexus_token", r.token);
     await enterApp();
   } catch (err) {
-    toast(err.message, "error");
+    if (state.mode === "login") {
+      toast(err.message + " — new here? Use \u201cCreate an account\u201d.", "error");
+    } else {
+      toast(err.message, "error");
+    }
   } finally {
     $("authSubmit").disabled = false;
   }
@@ -624,6 +631,27 @@ function disconnect() {
 function onIncoming(msg) {
   const added = addMessage(msg.conversationId, msg, true);
   if (added) bumpConversation(msg.conversationId, msg);
+  if (msg.type === "SYSTEM") onSystemEvent(msg);
+}
+
+async function onSystemEvent(msg) {
+  // a membership change happened: refresh our role/inbox so promotions take effect live
+  await refreshConversations();
+  // if we were removed or left, the conversation is no longer ours
+  if (msg.conversationId === state.activeId && !findConv(state.activeId)) {
+    state.activeId = null;
+    state.messages.delete(msg.conversationId);
+    $("paneActive").style.display = "none";
+    $("paneEmpty").style.display = "grid";
+    $("drawer").classList.remove("show");
+    return;
+  }
+  // keep an open management drawer in sync with the new roles/roster
+  if ($("drawer").classList.contains("show") && state.activeId === msg.conversationId) {
+    const conv = activeConv();
+    $("adminAdd").style.display = conv && conv.myRole === "ADMIN" ? "" : "none";
+    await renderRoster();
+  }
 }
 
 /* ---------------- conversations ---------------- */
@@ -642,6 +670,7 @@ function bumpConversation(id, msg) {
   if (!c) { refreshConversations(); return; }
   c.lastMessagePreview = msg.content;
   c.lastMessageSender = msg.senderUsername;
+  c.lastMessageType = msg.type;
   c.lastMessageAt = msg.createdAt;
   state.conversations.sort(byRecency);
   renderInbox();
@@ -672,7 +701,9 @@ function renderInbox() {
     btn.setAttribute("role", "listitem");
     const glyph = isGroup ? "#" : (c.displayName || "?").slice(0, 2).toUpperCase();
     const preview = c.lastMessagePreview
-      ? (c.lastMessageSender ? c.lastMessageSender + ": " + c.lastMessagePreview : c.lastMessagePreview)
+      ? (c.lastMessageType !== "SYSTEM" && c.lastMessageSender
+            ? c.lastMessageSender + ": " + c.lastMessagePreview
+            : c.lastMessagePreview)
       : "No messages yet";
     btn.innerHTML =
       '<span class="glyph">' + escapeHtml(glyph) + "</span>" +
@@ -742,6 +773,14 @@ function appendMessage(m, live) {
   const feed = $("feed");
   const placeholder = feed.querySelector(".empty");
   if (placeholder) feed.innerHTML = "";
+  if (m.type === "SYSTEM") {
+    const note = document.createElement("div");
+    note.className = "system-line" + (live ? " live" : "");
+    note.innerHTML = '<span>' + escapeHtml(m.content) + "</span>";
+    feed.appendChild(note);
+    feed.scrollTop = feed.scrollHeight;
+    return;
+  }
   const mine = state.user && m.senderUsername === state.user.username;
   const conv = activeConv();
   const showWho = !mine && conv && conv.type === "GROUP";
@@ -817,6 +856,7 @@ $("manageBtn").addEventListener("click", () => openDrawer());
 $("drawerClose").addEventListener("click", () => $("drawer").classList.remove("show"));
 
 async function openDrawer() {
+  await refreshConversations();
   const conv = activeConv();
   if (!conv || conv.type !== "GROUP") return;
   $("drawerTitle").textContent = conv.displayName;
