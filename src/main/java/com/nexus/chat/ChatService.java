@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ChatService {
@@ -54,6 +56,7 @@ public class ChatService {
 
         Conversation conversation = getOrCreateDirectConversation(sender, recipient);
         Message message = messages.save(new Message(conversation, sender, request.content()));
+        conversation.applyLastMessage(message);
 
         MessageResponse response = new MessageResponse(
                 message.getId(),
@@ -86,10 +89,10 @@ public class ChatService {
 
     /**
      * Lists every conversation the user belongs to (direct and group), most-recently-active
-     * first. Per-conversation last-message and DM-peer lookups are issued individually here;
-     * for a user with many conversations this is an N+1 pattern, and the documented production
-     * evolution is a denormalized {@code last_message_at} on the conversation plus a batched
-     * peer fetch. For the demo's scale this reads clearly and correctly.
+     * first. The last-message fields come from the denormalized snapshot on each conversation
+     * (maintained on write), and direct-conversation peer names are resolved in a single batched
+     * query — so the whole list is served in a fixed number of queries regardless of how many
+     * conversations the user has (no per-conversation N+1).
      */
     @Transactional(readOnly = true)
     public List<ConversationSummaryResponse> listConversations(String username) {
@@ -98,32 +101,39 @@ public class ChatService {
 
         List<ConversationMember> memberships =
                 members.findMembershipsWithConversationByUserId(me.getId());
+        if (memberships.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> directIds = memberships.stream()
+                .map(ConversationMember::getConversation)
+                .filter(c -> c.getType() == ConversationType.DIRECT)
+                .map(Conversation::getId)
+                .toList();
+
+        Map<Long, String> peerByConversation = new HashMap<>();
+        if (!directIds.isEmpty()) {
+            for (Object[] row : members.findPeerUsernames(directIds, me.getId())) {
+                peerByConversation.putIfAbsent((Long) row[0], (String) row[1]);
+            }
+        }
 
         List<ConversationSummaryResponse> summaries = new ArrayList<>();
         for (ConversationMember membership : memberships) {
             Conversation conversation = membership.getConversation();
-
-            String displayName;
-            if (conversation.getType() == ConversationType.GROUP) {
-                displayName = conversation.getName();
-            } else {
-                displayName = members.findOtherMemberUsernames(conversation.getId(), me.getId())
-                        .stream().findFirst().orElse("(unknown)");
-            }
-
-            Message last = messages
-                    .findTopByConversationIdOrderByCreatedAtDesc(conversation.getId())
-                    .orElse(null);
+            String displayName = conversation.getType() == ConversationType.GROUP
+                    ? conversation.getName()
+                    : peerByConversation.getOrDefault(conversation.getId(), "(unknown)");
 
             summaries.add(new ConversationSummaryResponse(
                     conversation.getId(),
                     conversation.getType(),
                     displayName,
                     membership.getRole(),
-                    last == null ? null : last.getContent(),
-                    last == null ? null : last.getSender().getUsername(),
-                    last == null ? null : last.getCreatedAt(),
-                    last == null ? null : last.getType()));
+                    conversation.getLastMessagePreview(),
+                    conversation.getLastMessageSender(),
+                    conversation.getLastMessageAt(),
+                    conversation.getLastMessageType()));
         }
 
         summaries.sort(Comparator.comparing(

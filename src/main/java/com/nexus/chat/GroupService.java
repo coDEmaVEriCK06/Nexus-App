@@ -134,6 +134,7 @@ public class GroupService {
         }
         Conversation conversation = conversations.getReferenceById(conversationId);
         Message message = messages.save(new Message(conversation, sender, request.content()));
+        conversation.applyLastMessage(message);
         MessageResponse response = new MessageResponse(
                 message.getId(),
                 conversationId,
@@ -163,6 +164,7 @@ public class GroupService {
      */
     private void systemNotice(Conversation group, User actor, String text, List<String> recipients) {
         Message saved = messages.save(Message.system(group, actor, text));
+        group.applyLastMessage(saved);
         MessageResponse response = new MessageResponse(
                 saved.getId(),
                 group.getId(),

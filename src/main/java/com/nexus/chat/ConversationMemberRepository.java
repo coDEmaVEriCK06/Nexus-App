@@ -35,11 +35,17 @@ public interface ConversationMemberRepository extends JpaRepository<Conversation
             """)
     List<ConversationMember> findMembershipsWithConversationByUserId(@Param("userId") Long userId);
 
+    /**
+     * Batched lookup of the "other" participant for a set of conversations (used to resolve
+     * the display name of direct conversations without a per-conversation query). For a direct
+     * conversation this returns a single row; group rows are returned too but ignored by callers.
+     * Each row is [conversationId (Long), username (String)].
+     */
     @Query("""
-            select m.user.username
+            select m.conversation.id, m.user.username
             from ConversationMember m
-            where m.conversation.id = :conversationId and m.user.id <> :excludeUserId
+            where m.conversation.id in :conversationIds and m.user.id <> :userId
             """)
-    List<String> findOtherMemberUsernames(@Param("conversationId") Long conversationId,
-                                          @Param("excludeUserId") Long excludeUserId);
+    List<Object[]> findPeerUsernames(@Param("conversationIds") List<Long> conversationIds,
+                                     @Param("userId") Long userId);
 }
