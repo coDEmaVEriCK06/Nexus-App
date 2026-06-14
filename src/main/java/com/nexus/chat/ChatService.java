@@ -118,6 +118,14 @@ public class ChatService {
             }
         }
 
+        List<Long> allIds = memberships.stream()
+                .map(m -> m.getConversation().getId())
+                .toList();
+        Map<Long, Long> unreadByConversation = new HashMap<>();
+        for (Object[] row : messages.countUnreadByConversation(me.getId(), allIds)) {
+            unreadByConversation.put((Long) row[0], (Long) row[1]);
+        }
+
         List<ConversationSummaryResponse> summaries = new ArrayList<>();
         for (ConversationMember membership : memberships) {
             Conversation conversation = membership.getConversation();
@@ -133,13 +141,31 @@ public class ChatService {
                     conversation.getLastMessagePreview(),
                     conversation.getLastMessageSender(),
                     conversation.getLastMessageAt(),
-                    conversation.getLastMessageType()));
+                    conversation.getLastMessageType(),
+                    unreadByConversation.getOrDefault(conversation.getId(), 0L)));
         }
 
         summaries.sort(Comparator.comparing(
                 ConversationSummaryResponse::lastMessageAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
         return summaries;
+    }
+
+    /**
+     * Marks a conversation read for the user by advancing their read watermark to the newest
+     * message. Idempotent. Requires the user to be a member.
+     */
+    @Transactional
+    public void markConversationRead(String username, Long conversationId) {
+        User me = users.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        ConversationMember membership = members.findByConversationIdAndUserId(conversationId, me.getId())
+                .orElseThrow(() -> new ForbiddenAccessException("You are not a member of this conversation"));
+        Long latest = messages.findMaxMessageId(conversationId);
+        if (latest != null) {
+            membership.setLastReadMessageId(latest);
+            members.save(membership);
+        }
     }
 
     private List<String> recipientUsernames(Long conversationId) {

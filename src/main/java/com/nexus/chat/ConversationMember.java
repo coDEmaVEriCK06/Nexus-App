@@ -42,6 +42,11 @@ public class ConversationMember {
     @Column(nullable = false, length = 20)
     private MemberRole role = MemberRole.MEMBER;
 
+    // Watermark: the id of the newest message this member has read in the conversation.
+    // Unread = messages from others with a higher id. Null means nothing read yet.
+    @Column(name = "last_read_message_id")
+    private Long lastReadMessageId;
+
     @CreationTimestamp
     @Column(name = "joined_at", nullable = false, updatable = false)
     private OffsetDateTime joinedAt;

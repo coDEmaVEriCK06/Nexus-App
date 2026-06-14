@@ -12,6 +12,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -50,5 +51,13 @@ public class MessageController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return chatService.getConversationMessages(principal.getUsername(), conversationId, page, size);
+    }
+
+    @PutMapping("/conversations/{conversationId}/read")
+    public ResponseEntity<Void> markRead(
+            @AuthenticationPrincipal UserDetails principal,
+            @PathVariable Long conversationId) {
+        chatService.markConversationRead(principal.getUsername(), conversationId);
+        return ResponseEntity.noContent().build();
     }
 }

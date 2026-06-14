@@ -9,9 +9,10 @@ import java.time.OffsetDateTime;
 /**
  * One row of a user's conversation list (their "inbox"). For a group, {@code displayName}
  * is the group name; for a direct conversation it is the other participant's username.
- * The last-message fields are null for a conversation that has no messages yet, and are
- * used to sort most-recently-active first. {@code lastMessageType} lets the client render a
- * system notice ("Carol promoted Bob") without a redundant sender prefix.
+ * The last-message fields come from the conversation's denormalized snapshot and sort
+ * most-recently-active first; {@code lastMessageType} lets the client render a system notice
+ * without a sender prefix. {@code unreadCount} is the number of messages from others that the
+ * viewer has not yet read.
  */
 public record ConversationSummaryResponse(
         Long conversationId,
@@ -21,5 +22,6 @@ public record ConversationSummaryResponse(
         String lastMessagePreview,
         String lastMessageSender,
         OffsetDateTime lastMessageAt,
-        MessageType lastMessageType
+        MessageType lastMessageType,
+        long unreadCount
 ) {}
