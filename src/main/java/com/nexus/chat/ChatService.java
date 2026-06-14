@@ -78,12 +78,12 @@ public class ChatService {
         User requester = users.findByUsername(requesterUsername)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (!members.existsByConversationIdAndUserId(conversationId, requester.getId())) {
-            throw new ForbiddenAccessException("You are not a member of this conversation");
-        }
+        ConversationMember membership = members.findByConversationIdAndUserId(conversationId, requester.getId())
+                .orElseThrow(() -> new ForbiddenAccessException("You are not a member of this conversation"));
 
-        Page<MessageResponse> result =
-                messages.findResponsesByConversationId(conversationId, PageRequest.of(page, size));
+        // A member only sees messages from their join point onward — no pre-join history.
+        Page<MessageResponse> result = messages.findResponsesByConversationId(
+                conversationId, membership.getJoinedAt(), PageRequest.of(page, size));
         return PageResponse.from(result);
     }
 
