@@ -223,11 +223,23 @@
   .conv:hover { background: var(--surface-2); }
   .conv.active { background: var(--surface-2); border-color: var(--line); }
   .conv .glyph {
+    position: relative;
     width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
     font-family: var(--font-mono); font-weight: 500; font-size: 13px;
     background: var(--surface-3); color: var(--muted);
   }
   .conv.group .glyph { color: var(--signal); }
+  /* presence indicator: a small teal dot ringed in the page background so it reads as a cutout */
+  .pdot {
+    position: absolute; right: -2px; bottom: -2px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--signal); box-shadow: 0 0 0 2px var(--bg);
+  }
+  .pane-dot {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--signal); margin-right: 8px; vertical-align: middle;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--signal) 30%, transparent);
+  }
   .conv .meta { min-width: 0; }
   .conv .row1 { display: flex; align-items: center; gap: 6px; }
   .conv .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -403,7 +415,10 @@
       <div id="paneActive" style="display:none; flex:1; min-height:0; flex-direction:column;">
         <div class="pane-head">
           <div style="flex:1; min-width:0;">
-            <div class="title" id="paneTitle"></div>
+            <div class="title-row" style="display:flex; align-items:center; min-width:0;">
+              <span class="pane-dot" id="paneDot" style="display:none;" role="img" aria-label="Online"></span>
+              <span class="title" id="paneTitle" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></span>
+            </div>
             <div class="sub" id="paneSub"></div>
           </div>
           <button class="btn ghost sm" id="manageBtn" style="display:none;">Manage</button>
@@ -496,6 +511,7 @@ const state = {
   seen: new Map(),       // convId -> Set(ids)
   loaded: new Set(),     // convIds whose history has been fetched (vs only touched live)
   unreadMarker: null,    // { conversationId, beforeId, count } for the "N unread" divider
+  online: new Set(),     // usernames of contacts currently online (presence)
   stomp: null,
   mode: "login",         // login | register
 };
@@ -648,8 +664,13 @@ function connect() {
       client.subscribe("/user/queue/messages", (frame) => {
         try { onIncoming(JSON.parse(frame.body)); } catch (e) {}
       });
+      client.subscribe("/user/queue/presence", (frame) => {
+        try { onPresence(JSON.parse(frame.body)); } catch (e) {}
+      });
+      // Subscribe first, then seed the current snapshot, so no transition is missed.
+      loadPresenceSnapshot();
     },
-    onWebSocketClose: () => setConnection(false),
+    onWebSocketClose: () => { setConnection(false); clearPresence(); },
     onStompError: (f) => {
       setConnection(false);
       toast((f.headers && f.headers.message) || "Realtime connection refused.", "error");
@@ -661,6 +682,50 @@ function connect() {
 function disconnect() {
   if (state.stomp) { try { state.stomp.deactivate(); } catch (e) {} state.stomp = null; }
   setConnection(false);
+  clearPresence();
+}
+
+/* ---------------- presence ---------------- */
+// Seed the online set from the server snapshot (who's online right now). Called after the
+// presence subscription is live, so any transition between snapshot and now still arrives.
+async function loadPresenceSnapshot() {
+  try {
+    const online = await api("/api/presence");   // List<String> of contact usernames
+    state.online = new Set(Array.isArray(online) ? online : []);
+    applyPresenceUI();
+  } catch (e) { /* non-fatal: dots simply stay dark until the next event */ }
+}
+
+// A contact came online or went offline.
+function onPresence(evt) {
+  if (!evt || !evt.username) return;
+  if (evt.online) state.online.add(evt.username);
+  else state.online.delete(evt.username);
+  applyPresenceUI();
+}
+
+// Socket dropped or logged out: presence is no longer trustworthy, so go dark.
+function clearPresence() {
+  if (state.online.size === 0) return;
+  state.online.clear();
+  applyPresenceUI();
+}
+
+// Reflect the current online set in the inbox rows and the open-chat header.
+function applyPresenceUI() {
+  renderInbox();
+  updateHeaderPresence();
+}
+
+// For a direct conversation, the peer's username is the row's displayName.
+function isContactOnline(conv) {
+  return !!conv && conv.type === "DIRECT" && state.online.has(conv.displayName);
+}
+
+function updateHeaderPresence() {
+  const dot = $("paneDot");
+  if (!dot) return;
+  dot.style.display = isContactOnline(activeConv()) ? "" : "none";
 }
 
 function onIncoming(msg) {
@@ -761,7 +826,9 @@ function renderInbox() {
             : c.lastMessagePreview)
       : "No messages yet";
     btn.innerHTML =
-      '<span class="glyph">' + escapeHtml(glyph) + "</span>" +
+      '<span class="glyph">' + escapeHtml(glyph) +
+        (isContactOnline(c) ? '<span class="pdot" role="img" aria-label="Online"></span>' : "") +
+      "</span>" +
       '<span class="meta">' +
         '<span class="row1"><span class="name">' + escapeHtml(c.displayName || "(unknown)") + "</span>" +
           (isGroup && c.myRole === "ADMIN" ? '<span class="badge admin">admin</span>' : "") + "</span>" +
@@ -786,6 +853,7 @@ async function selectConversation(id) {
   $("paneTitle").textContent = c.displayName || "(unknown)";
   $("paneSub").textContent = (c.type === "GROUP" ? "group" : "direct") + " · #" + c.conversationId;
   $("manageBtn").style.display = c.type === "GROUP" ? "" : "none";
+  updateHeaderPresence();
   $("feed").innerHTML = '<div class="empty" style="color:var(--faint)">Loading…</div>';
   try {
     if (!state.loaded.has(id)) { await loadHistory(id); state.loaded.add(id); }
