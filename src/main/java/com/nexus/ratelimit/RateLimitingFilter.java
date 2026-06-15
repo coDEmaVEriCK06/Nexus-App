@@ -1,5 +1,6 @@
 package com.nexus.ratelimit;
 
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -40,12 +41,17 @@ public class RateLimitingFilter extends OncePerRequestFilter {
     private static final String REGISTER_PATH = "/api/auth/register";
 
     private final RateLimitProperties properties;
-    private final MeterRegistry meterRegistry;
+    private final Counter rejectedCounter;
     private final ConcurrentMap<String, TokenBucket> buckets = new ConcurrentHashMap<>();
 
     public RateLimitingFilter(RateLimitProperties properties, MeterRegistry meterRegistry) {
         this.properties = properties;
-        this.meterRegistry = meterRegistry;
+        // Register the counter at startup so /actuator/metrics/nexus.ratelimit.rejected
+        // exists (reading 0) from the first request, rather than 404-ing until the first
+        // rejection lazily creates it.
+        this.rejectedCounter = Counter.builder("nexus.ratelimit.rejected")
+                .description("Requests rejected by the rate limiter")
+                .register(meterRegistry);
     }
 
     @Override
@@ -65,7 +71,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         if (bucket.tryConsume()) {
             filterChain.doFilter(request, response);
         } else {
-            meterRegistry.counter("nexus.ratelimit.rejected").increment();
+            rejectedCounter.increment();
             writeTooManyRequests(response);
         }
     }
