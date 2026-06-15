@@ -48,4 +48,18 @@ public interface ConversationMemberRepository extends JpaRepository<Conversation
             """)
     List<Object[]> findPeerUsernames(@Param("conversationIds") List<Long> conversationIds,
                                      @Param("userId") Long userId);
+
+    /**
+     * Distinct usernames of everyone who shares at least one conversation with the given user
+     * (their "contacts") — used to decide who hears about that user's presence changes.
+     */
+    @Query("""
+            select distinct cm.user.username
+            from ConversationMember cm
+            where cm.conversation.id in (
+                select m.conversation.id from ConversationMember m where m.user.username = :username
+            )
+            and cm.user.username <> :username
+            """)
+    List<String> findContactUsernames(@Param("username") String username);
 }
