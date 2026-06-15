@@ -251,7 +251,7 @@
   }
   .pane-head .title { font-weight: 600; font-size: 16px; }
   .pane-head .sub { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
-  .feed { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .feed { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; position: relative; }
   .msg { max-width: 68%; display: flex; flex-direction: column; gap: 3px; }
   .msg .who { font-size: 11.5px; color: var(--signal); font-weight: 600; }
   .bubble {
@@ -266,6 +266,9 @@
   .system-line { align-self: center; max-width: 82%; text-align: center; margin: 4px 0; }
   .system-line span { display: inline-block; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
   .system-line.live span { animation: arrive .45s ease; border-color: color-mix(in srgb, var(--signal) 35%, transparent); }
+  .unread-divider { display: flex; align-items: center; gap: 10px; margin: 12px 2px 8px; color: var(--signal); }
+  .unread-divider::before, .unread-divider::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--signal) 30%, transparent); }
+  .unread-divider span { font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
   @keyframes arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
   .composer { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface); }
@@ -491,6 +494,8 @@ const state = {
   activeId: null,
   messages: new Map(),   // convId -> [MessageResponse] oldest-first
   seen: new Map(),       // convId -> Set(ids)
+  loaded: new Set(),     // convIds whose history has been fetched (vs only touched live)
+  unreadMarker: null,    // { conversationId, beforeId, count } for the "N unread" divider
   stomp: null,
   mode: "login",         // login | register
 };
@@ -621,7 +626,7 @@ $("logoutBtn").addEventListener("click", () => {
   sessionStorage.removeItem("nexus_token");
   disconnect();
   state.conversations = []; state.activeId = null;
-  state.messages.clear(); state.seen.clear();
+  state.messages.clear(); state.seen.clear(); state.loaded.clear();
   showAuth();
   setMode("login");
 });
@@ -783,7 +788,8 @@ async function selectConversation(id) {
   $("manageBtn").style.display = c.type === "GROUP" ? "" : "none";
   $("feed").innerHTML = '<div class="empty" style="color:var(--faint)">Loading…</div>';
   try {
-    if (!state.messages.has(id)) await loadHistory(id);
+    if (!state.loaded.has(id)) { await loadHistory(id); state.loaded.add(id); }
+    state.unreadMarker = computeUnreadMarker(id, c.unreadCount || 0);
     renderFeed();
     markRead(id);
     c.unreadCount = 0;
@@ -794,12 +800,35 @@ async function selectConversation(id) {
   }
 }
 
+// Locates where the "N unread messages" divider should sit: just before the oldest
+// message from someone else that the viewer hasn't read yet. Returns null when nothing
+// is unread (or the unread messages predate the loaded page).
+function computeUnreadMarker(id, pendingUnread) {
+  if (pendingUnread <= 0) return null;
+  const list = state.messages.get(id) || [];
+  const me = state.user && state.user.username;
+  let count = 0, beforeId = null;
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].senderUsername !== me) {
+      count++;
+      beforeId = list[i].id;
+      if (count >= pendingUnread) break;
+    }
+  }
+  return beforeId == null ? null : { conversationId: id, beforeId, count: pendingUnread };
+}
+
 async function loadHistory(id) {
   const page = await api("/api/conversations/" + id + "/messages?page=0&size=50");
-  const ordered = (page.content || []).slice().reverse(); // server returns newest-first
-  const arr = []; const seen = new Set();
-  for (const m of ordered) { if (!seen.has(m.id)) { seen.add(m.id); arr.push(m); } }
-  state.messages.set(id, arr);
+  const fetched = (page.content || []).slice().reverse(); // server returns newest-first
+  const existing = state.messages.get(id) || [];
+  const seen = new Set();
+  const merged = [];
+  for (const m of [...fetched, ...existing]) {
+    if (!seen.has(m.id)) { seen.add(m.id); merged.push(m); }
+  }
+  merged.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id - b.id));
+  state.messages.set(id, merged);
   state.seen.set(id, seen);
 }
 
@@ -822,7 +851,23 @@ function renderFeed() {
     feed.innerHTML = '<div class="empty"><div><div class="emoji">✎</div><h3>No messages yet</h3><p>Say something — it persists, then arrives back over the socket.</p></div></div>';
     return;
   }
-  for (const m of list) appendMessage(m, false);
+  const marker = state.unreadMarker;
+  let dividerEl = null;
+  for (const m of list) {
+    if (marker && marker.conversationId === state.activeId && m.id === marker.beforeId) {
+      dividerEl = document.createElement("div");
+      dividerEl.className = "unread-divider";
+      dividerEl.innerHTML = "<span>" + marker.count + " unread message" + (marker.count === 1 ? "" : "s") + "</span>";
+      feed.appendChild(dividerEl);
+    }
+    appendMessage(m, false);
+  }
+  if (dividerEl) {
+    // scroll the feed so the divider sits near the top, with a little context above it
+    feed.scrollTop = Math.max(0, dividerEl.offsetTop - 72);
+  } else {
+    feed.scrollTop = feed.scrollHeight;
+  }
 }
 
 function appendMessage(m, live) {
